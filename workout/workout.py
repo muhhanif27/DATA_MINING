@@ -18,7 +18,7 @@ MODELS_DIR = os.path.join(BASE_DIR, "models")
 st.title("Workout Efficiency Classification Dashboard")
 st.markdown("""
 Pilih skenario seleksi fitur dan algoritma untuk mengklasifikasi efisiensi latihan.
-Unggah file CSV untuk prediksi batch, lihat hasilnya dalam tabel (termasuk Workout Efficiency),
+Unggah file CSV untuk prediksi batch, lihat hasilnya dalam tabel (termasuk Workout Efficiency sebelum dan sesudah scaling),
 lihat visualisasi distribusi prediksi, dan unduh hasilnya.
 """)
 
@@ -27,7 +27,7 @@ scenarios = {
     "No Feature Selection": [
         'Age', 'Gender', 'Height (cm)', 'Weight (kg)', 'Workout Type', 'Workout Duration (mins)',
         'Calories Burned', 'Heart Rate (bpm)', 'Steps Taken', 'Distance (km)', 'Workout Intensity',
-        'Sleep Hours', 'Daily Calories Intake', 'Resting Heart Rate (bpm)'
+        'Sleep Hours', 'Daily Calories Intake', 'Resting Heart Rate (bpm)', 'Workout Efficiency'
     ],
     "Chi-square": [
         'Calories Burned', 'Workout Efficiency', 'Steps Taken', 'Distance (km)', 'Heart Rate (bpm)', 
@@ -90,28 +90,28 @@ def calculate_workout_efficiency(row, min_calories, max_calories, min_steps, max
 def preprocess_data(df, selected_features, scaler):
     df = df.copy()
 
-    # Calculate Workout Efficiency
+    # Calculate Workout Efficiency (Raw)
     min_calories, max_calories = df['Calories Burned'].min(), df['Calories Burned'].max()
     min_steps, max_steps = df['Steps Taken'].min(), df['Steps Taken'].max()
     min_distance, max_distance = df['Distance (km)'].min(), df['Distance (km)'].max()
-    df['Workout Efficiency'] = df.apply(
+    df['Workout Efficiency (Raw)'] = df.apply(
         lambda row: calculate_workout_efficiency(
             row, min_calories, max_calories, min_steps, max_steps, min_distance, max_distance
         ), axis=1
     )
 
-    # Check for missing features (excluding Workout Efficiency)
+    # Check for missing features
     required_features = [f for f in selected_features if f != 'Workout Efficiency']
     missing_features = [f for f in required_features if f not in df.columns]
     if missing_features:
         st.error(f"Fitur yang hilang di CSV: {missing_features}")
         return None, None
 
-    # Select features, including Workout Efficiency temporarily
-    available_features = [f for f in selected_features if f in df.columns]
-    if 'Workout Efficiency' not in available_features:
-        available_features.append('Workout Efficiency')
-    df = df[available_features]
+    # Select features for prediction
+    df_processed = df.copy()
+    df_processed['Workout Efficiency'] = df['Workout Efficiency (Raw)']  # Copy for scaling
+    available_features = [f for f in selected_features if f in df_processed.columns]
+    df_processed = df_processed[available_features]
 
     # Encode categorical columns
     nominal_columns = ['Gender', 'Workout Type']
@@ -119,13 +119,13 @@ def preprocess_data(df, selected_features, scaler):
 
     label_encoder = LabelEncoder()
     for column in nominal_columns:
-        if column in df.columns:
-            df[column] = label_encoder.fit_transform(df[column])
+        if column in df_processed.columns:
+            df_processed[column] = label_encoder.fit_transform(df_processed[column])
 
     for column, order in ordinal_columns.items():
-        if column in df.columns:
+        if column in df_processed.columns:
             mapping = {label: i for i, label in enumerate(order)}
-            df[column] = df[column].map(mapping)
+            df_processed[column] = df_processed[column].map(mapping)
 
     # Standardize numerical columns
     numerical_cols = [
@@ -133,16 +133,15 @@ def preprocess_data(df, selected_features, scaler):
         'Age', 'Height (cm)', 'Weight (kg)', 'Sleep Hours', 'Resting Heart Rate (bpm)',
         'Daily Calories Intake', 'Workout Efficiency'
     ]
-    numerical_cols = [col for col in numerical_cols if col in df.columns]
+    numerical_cols = [col for col in numerical_cols if col in df_processed.columns]
     if numerical_cols:
-        df[numerical_cols] = scaler.transform(df[numerical_cols])
+        df_processed[numerical_cols] = scaler.transform(df_processed[numerical_cols])
 
-    # Keep processed_df with Workout Efficiency for output
+    # Store scaled Workout Efficiency
     processed_df = df.copy()
-    if 'Workout Efficiency' not in selected_features:
-        df = df.drop(columns=['Workout Efficiency'])
+    processed_df['Workout Efficiency (Scaled)'] = df_processed['Workout Efficiency']
 
-    return df, processed_df
+    return df_processed, processed_df
 
 # Load model and scaler
 @st.cache_resource
@@ -193,7 +192,8 @@ if uploaded_file:
         
         # Add predictions and Workout Efficiency to output
         output_df = input_df.copy()
-        output_df['Workout Efficiency'] = processed_df['Workout Efficiency']
+        output_df['Workout Efficiency (Raw)'] = processed_df['Workout Efficiency (Raw)']
+        output_df['Workout Efficiency (Scaled)'] = processed_df['Workout Efficiency (Scaled)']
         output_df['Predicted Efficiency Classification'] = prediction_labels
         
         # Display results

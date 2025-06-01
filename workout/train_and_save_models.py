@@ -81,10 +81,8 @@ def preprocess_data(df, selected_features):
         ), axis=1
     )
 
-    # Select features, ensuring Workout Efficiency is included for classification
+    # Select features
     available_features = [f for f in selected_features if f in df.columns]
-    if 'Workout Efficiency' not in available_features:
-        available_features.append('Workout Efficiency')
     df = df[available_features]
 
     # Encode categorical columns
@@ -128,10 +126,6 @@ def preprocess_data(df, selected_features):
         lambda x: classify_workout_efficiency(x, percentile_33, percentile_66)
     )
 
-    # Drop Workout Efficiency if not in selected_features
-    if 'Workout Efficiency' not in selected_features:
-        df = df.drop(columns=['Workout Efficiency'])
-
     X = df.drop(columns=['Efficiency Classification'])
     y = df['Efficiency Classification']
     return X, y, scaler
@@ -141,7 +135,7 @@ scenarios = {
     "No Feature Selection": [
         'Age', 'Gender', 'Height (cm)', 'Weight (kg)', 'Workout Type', 'Workout Duration (mins)',
         'Calories Burned', 'Heart Rate (bpm)', 'Steps Taken', 'Distance (km)', 'Workout Intensity',
-        'Sleep Hours', 'Daily Calories Intake', 'Resting Heart Rate (bpm)'
+        'Sleep Hours', 'Daily Calories Intake', 'Resting Heart Rate (bpm)', 'Workout Efficiency'
     ],
     "Chi-square": [
         'Calories Burned', 'Workout Efficiency', 'Steps Taken', 'Distance (km)', 'Heart Rate (bpm)', 
