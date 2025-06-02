@@ -35,7 +35,7 @@ def load_data():
 # Calculate Workout Efficiency
 def calculate_workout_efficiency(row, min_calories, max_calories, min_steps, max_steps, min_distance, max_distance):
     def calculate_bmi(height, weight):
-        return weight / (height / 100) ** 2
+        return weight / ((height / 100) ** 2)
 
     def workout_intensity_score(workout_type):
         workout_types = {
@@ -71,10 +71,12 @@ def calculate_workout_efficiency(row, min_calories, max_calories, min_steps, max
 def preprocess_data(df, selected_features):
     df = df.copy()
 
-    # Calculate Workout Efficiency
+    # Calculate min/max for normalization
     min_calories, max_calories = df['Calories Burned'].min(), df['Calories Burned'].max()
     min_steps, max_steps = df['Steps Taken'].min(), df['Steps Taken'].max()
     min_distance, max_distance = df['Distance (km)'].min(), df['Distance (km)'].max()
+
+    # Calculate Workout Efficiency
     df['Workout Efficiency'] = df.apply(
         lambda row: calculate_workout_efficiency(
             row, min_calories, max_calories, min_steps, max_steps, min_distance, max_distance
@@ -128,7 +130,11 @@ def preprocess_data(df, selected_features):
 
     X = df.drop(columns=['Efficiency Classification'])
     y = df['Efficiency Classification']
-    return X, y, scaler
+    return X, y, scaler, {
+        'min_calories': min_calories, 'max_calories': max_calories,
+        'min_steps': min_steps, 'max_steps': max_steps,
+        'min_distance': min_distance, 'max_distance': max_distance
+    }
 
 # Define scenarios
 scenarios = {
@@ -157,7 +163,7 @@ def train_and_save_models():
     for scenario_name, features in scenarios.items():
         print(f"Training models for {scenario_name}...")
         try:
-            X, y, scaler = preprocess_data(df, features)
+            X, y, scaler, norm_params = preprocess_data(df, features)
 
             # Apply SMOTE
             smote = SMOTE(random_state=42)
@@ -182,7 +188,12 @@ def train_and_save_models():
             with open(scaler_path, 'wb') as f:
                 pickle.dump(scaler, f)
 
-            print(f"Models and scaler for {scenario_name} saved successfully.")
+            # Save normalization parameters
+            norm_params_path = os.path.join(MODELS_DIR, f'norm_params_{scenario_name.replace(" ", "_").lower()}.pkl')
+            with open(norm_params_path, 'wb') as f:
+                pickle.dump(norm_params, f)
+
+            print(f"Models, scaler, and normalization parameters for {scenario_name} saved successfully.")
         except Exception as e:
             print(f"Error training models for {scenario_name}: {str(e)}")
             raise

@@ -18,8 +18,9 @@ MODELS_DIR = os.path.join(BASE_DIR, "models")
 st.title("Workout Efficiency Classification Dashboard")
 st.markdown("""
 Pilih skenario seleksi fitur dan algoritma untuk mengklasifikasi efisiensi latihan.
-Unggah file CSV untuk prediksi batch, lihat hasilnya dalam tabel (termasuk Workout Efficiency sebelum dan sesudah scaling),
-lihat visualisasi distribusi prediksi, dan unduh hasilnya.
+Gunakan tab Input Manual untuk memasukkan data sesuai fitur yang dipilih, atau tab Input Batch untuk mengunggah file CSV.
+Hasil akan ditampilkan dalam tabel (termasuk Workout Efficiency sebelum dan sesudah scaling),
+dengan visualisasi distribusi prediksi untuk input batch, dan dapat diunduh.
 """)
 
 # Define scenarios and their features
@@ -39,6 +40,15 @@ scenarios = {
     ]
 }
 
+# Define categorical values
+categorical_values = {
+    'Gender': ['Male', 'Other', 'Female'],
+    'Workout Type': ['Cycling', 'Cardio', 'HIIT', 'Strength', 'Yoga', 'Running'],
+    'Workout Intensity': ['High', 'Medium', 'Low'],
+    'Mood Before Workout': ['Tired', 'Happy', 'Neutral', 'Stressed'],
+    'Mood After Workout': ['Fatigued', 'Energized', 'Neutral']
+}
+
 # Define algorithms
 algorithms = ["Decision Tree", "Naive Bayes"]
 
@@ -48,13 +58,13 @@ selected_scenario = st.sidebar.selectbox("Pilih Skenario Seleksi Fitur", list(sc
 selected_algorithm = st.sidebar.selectbox("Pilih Algoritma", algorithms)
 
 # Display selected features
-st.subheader("Fitur yang Dipilih")
-st.write(scenarios[selected_scenario])
+st.subheader("Fitur yang Dipilih untuk Prediksi")
+st.write([f for f in scenarios[selected_scenario] if f != 'Workout Efficiency'])
 
 # Calculate Workout Efficiency
-def calculate_workout_efficiency(row, min_calories, max_calories, min_steps, max_steps, min_distance, max_distance):
+def calculate_workout_efficiency(row, norm_params):
     def calculate_bmi(height, weight):
-        return weight / (height / 100) ** 2
+        return weight / ((height / 100) ** 2)
 
     def workout_intensity_score(workout_type):
         workout_types = {
@@ -68,9 +78,9 @@ def calculate_workout_efficiency(row, min_calories, max_calories, min_steps, max
     bmi = calculate_bmi(row['Height (cm)'], row['Weight (kg)'])
     bmi_score = 1.0 if 18.5 <= bmi <= 25 else 0.9 if 25 < bmi <= 30 else 0.8
 
-    calories_score = normalize(row['Calories Burned'], min_calories, max_calories)
-    steps_score = normalize(row['Steps Taken'], min_steps, max_steps)
-    distance_score = normalize(row['Distance (km)'], min_distance, max_distance)
+    calories_score = normalize(row['Calories Burned'], norm_params['min_calories'], norm_params['max_calories'])
+    steps_score = normalize(row['Steps Taken'], norm_params['min_steps'], norm_params['max_steps'])
+    distance_score = normalize(row['Distance (km)'], norm_params['min_distance'], norm_params['max_distance'])
 
     max_heart_rate = 220 - row['Age']
     heart_rate_score = row['Heart Rate (bpm)'] / max_heart_rate
@@ -87,24 +97,19 @@ def calculate_workout_efficiency(row, min_calories, max_calories, min_steps, max
     return workout_efficiency
 
 # Preprocess input data
-def preprocess_data(df, selected_features, scaler):
+def preprocess_data(df, selected_features, scaler, norm_params):
     df = df.copy()
 
     # Calculate Workout Efficiency (Raw)
-    min_calories, max_calories = df['Calories Burned'].min(), df['Calories Burned'].max()
-    min_steps, max_steps = df['Steps Taken'].min(), df['Steps Taken'].max()
-    min_distance, max_distance = df['Distance (km)'].min(), df['Distance (km)'].max()
     df['Workout Efficiency (Raw)'] = df.apply(
-        lambda row: calculate_workout_efficiency(
-            row, min_calories, max_calories, min_steps, max_steps, min_distance, max_distance
-        ), axis=1
+        lambda row: calculate_workout_efficiency(row, norm_params), axis=1
     )
 
     # Check for missing features
     required_features = [f for f in selected_features if f != 'Workout Efficiency']
     missing_features = [f for f in required_features if f not in df.columns]
     if missing_features:
-        st.error(f"Fitur yang hilang di CSV: {missing_features}")
+        st.error(f"Fitur yang hilang: {missing_features}")
         return None, None
 
     # Select features for prediction
@@ -143,13 +148,14 @@ def preprocess_data(df, selected_features, scaler):
 
     return df_processed, processed_df
 
-# Load model and scaler
+# Load model, scaler, and normalization parameters
 @st.cache_resource
 def load_model_and_scaler(scenario, algorithm):
     scenario_key = scenario.replace(" ", "_").lower()
     algorithm_key = 'dt' if algorithm == "Decision Tree" else 'nb'
     model_path = os.path.join(MODELS_DIR, f'{algorithm_key}_{scenario_key}.pkl')
     scaler_path = os.path.join(MODELS_DIR, f'scaler_{scenario_key}.pkl')
+    norm_params_path = os.path.join(MODELS_DIR, f'norm_params_{scenario_key}.pkl')
     
     if not os.path.exists(model_path):
         st.error(f"File model tidak ditemukan: {model_path}. Jalankan train_and_save_models.py untuk membuat model.")
@@ -157,73 +163,152 @@ def load_model_and_scaler(scenario, algorithm):
     if not os.path.exists(scaler_path):
         st.error(f"File scaler tidak ditemukan: {scaler_path}. Jalankan train_and_save_models.py untuk membuat scaler.")
         raise FileNotFoundError(f"File scaler tidak ditemukan: {scaler_path}")
+    if not os.path.exists(norm_params_path):
+        st.error(f"File parameter normalisasi tidak ditemukan: {norm_params_path}. Jalankan train_and_save_models.py untuk membuat parameter.")
+        raise FileNotFoundError(f"File parameter normalisasi tidak ditemukan: {norm_params_path}")
     
     with open(model_path, 'rb') as f:
         model = pickle.load(f)
     with open(scaler_path, 'rb') as f:
         scaler = pickle.load(f)
-    return model, scaler
+    with open(norm_params_path, 'rb') as f:
+        norm_params = pickle.load(f)
+    return model, scaler, norm_params
 
-# File uploader
-st.subheader("Prediksi Batch")
-uploaded_file = st.file_uploader("Unggah CSV untuk prediksi", type=["csv"])
+# Create tabs for Manual Input and Batch Input
+tab1, tab2 = st.tabs(["Input Manual", "Input Batch"])
 
-if uploaded_file:
-    input_df = pd.read_csv(uploaded_file)
-    input_df.columns = input_df.columns.str.strip()
+with tab1:
+    st.subheader("Input Manual")
+    with st.form(key='manual_input_form'):
+        st.markdown("Masukkan data untuk fitur yang dipilih:")
+        
+        # Create input fields for selected features (excluding Workout Efficiency)
+        input_data = {}
+        for column in [f for f in scenarios[selected_scenario] if f != 'Workout Efficiency']:
+            if column in categorical_values:
+                input_data[column] = st.selectbox(f"{column}", categorical_values[column])
+            else:
+                input_data[column] = st.number_input(f"{column}", min_value=0.0, step=0.1)
+        
+        submit_button = st.form_submit_button(label='Prediksi')
 
-    # Load model and scaler
-    try:
-        model, scaler = load_model_and_scaler(selected_scenario, selected_algorithm)
-    except FileNotFoundError:
-        st.stop()
+    if submit_button:
+        # Convert manual input to DataFrame
+        input_df = pd.DataFrame([input_data])
+        
+        # Load model, scaler, and normalization parameters
+        try:
+            model, scaler, norm_params = load_model_and_scaler(selected_scenario, selected_algorithm)
+        except FileNotFoundError:
+            st.stop()
 
-    # Preprocess input data
-    X_input, processed_df = preprocess_data(input_df, scenarios[selected_scenario], scaler)
-    
-    if X_input is not None:
-        # Make predictions
-        predictions = model.predict(X_input)
-        prediction_labels = pd.Series(predictions).map({
-            0: 'Low Efficiency',
-            1: 'Moderate Efficiency',
-            2: 'High Efficiency'
-        })
+        # Preprocess input data
+        X_input, processed_df = preprocess_data(input_df, scenarios[selected_scenario], scaler, norm_params)
         
-        # Add predictions and Workout Efficiency to output
-        output_df = input_df.copy()
-        output_df['Workout Efficiency (Raw)'] = processed_df['Workout Efficiency (Raw)']
-        output_df['Workout Efficiency (Scaled)'] = processed_df['Workout Efficiency (Scaled)']
-        output_df['Predicted Efficiency Classification'] = prediction_labels
+        if X_input is not None:
+            # Make prediction
+            prediction = model.predict(X_input)
+            prediction_label = pd.Series(prediction).map({
+                0: 'Low Efficiency',
+                1: 'Moderate Efficiency',
+                2: 'High Efficiency'
+            }).iloc[0]
+            
+            # Define colors for efficiency levels (text color and background color)
+            style_map = {
+                'Low Efficiency': {'text_color': 'white', 'background_color': 'red'},
+                'Moderate Efficiency': {'text_color': 'white', 'background_color': 'blue'},
+                'High Efficiency': {'text_color': 'white', 'background_color': 'green'}
+            }
+            
+            # Get the style for the current prediction
+            current_style = style_map.get(prediction_label, {'text_color': 'black', 'background_color': 'white'})
+            
+            # Add prediction and Workout Efficiency to output
+            # No need to add to output_df for display here, but keep if needed for other purposes
+            # output_df = input_df.copy()
+            # output_df['Workout Efficiency (Raw)'] = processed_df['Workout Efficiency (Raw)']
+            # output_df['Workout Efficiency (Scaled)'] = processed_df['Workout Efficiency (Scaled)']
+            # output_df['Predicted Efficiency Classification'] = prediction_label
+            
+            # Display results with colored prediction and background
+            st.subheader("Hasil Prediksi (Input Manual)")
+            st.write(f"**Workout Efficiency (Raw):** {processed_df['Workout Efficiency (Raw)'].iloc[0]:.2f}")
+            st.write(f"**Workout Efficiency (Scaled):** {processed_df['Workout Efficiency (Scaled)'].iloc[0]:.2f}")
+            
+            # Display the prediction with bold text and colored background
+            st.markdown(
+                f"<div style='background-color: {current_style['background_color']}; color: {current_style['text_color']}; padding: 10px; border-radius: 5px; font-weight: bold;'>"
+                f"Predicted Efficiency Classification: {prediction_label}"
+                f"</div>", 
+                unsafe_allow_html=True
+            )
+            
+            # Optionally, display the input data in a dataframe above the styled prediction
+            st.subheader("Data Input Anda")
+            st.dataframe(input_df) # Display the original input data
+            
+with tab2:
+    st.subheader("Input Batch")
+    uploaded_file = st.file_uploader("Unggah CSV untuk prediksi", type=["csv"])
+
+    if uploaded_file:
+        input_df = pd.read_csv(uploaded_file)
+        input_df.columns = input_df.columns.str.strip()
+
+        # Load model, scaler, and normalization parameters
+        try:
+            model, scaler, norm_params = load_model_and_scaler(selected_scenario, selected_algorithm)
+        except FileNotFoundError:
+            st.stop()
+
+        # Preprocess input data
+        X_input, processed_df = preprocess_data(input_df, scenarios[selected_scenario], scaler, norm_params)
         
-        # Display results
-        st.subheader("Hasil Prediksi")
-        st.dataframe(output_df)
-        
-        # Visualization: Bar chart of prediction distribution
-        st.subheader("Distribusi Kelas Prediksi")
-        class_counts = prediction_labels.value_counts().reset_index()
-        class_counts.columns = ['Kelas', 'Jumlah']
-        fig = px.bar(class_counts, x='Kelas', y='Jumlah', 
-                     color='Kelas', text='Jumlah',
-                     color_discrete_map={
-                         'Low Efficiency': '#FF6347',
-                         'Moderate Efficiency': '#4682B4',
-                         'High Efficiency': '#32CD32'
-                     },
-                     title="Distribusi Kelas Prediksi")
-        fig.update_layout(xaxis_title="Kelas Prediksi", yaxis_title="Jumlah Data")
-        st.plotly_chart(fig, use_container_width=True)
-        
-        # Download button
-        csv = output_df.to_csv(index=False).encode('utf-8')
-        st.download_button(
-            label="Unduh Prediksi",
-            data=csv,
-            file_name=f"predictions_{selected_scenario}_{selected_algorithm}.csv",
-            mime="text/csv",
-            key=str(uuid.uuid4())
-        )
+        if X_input is not None:
+            # Make predictions
+            predictions = model.predict(X_input)
+            prediction_labels = pd.Series(predictions).map({
+                0: 'Low Efficiency',
+                1: 'Moderate Efficiency',
+                2: 'High Efficiency'
+            })
+            
+            # Add predictions and Workout Efficiency to output
+            output_df = input_df.copy()
+            output_df['Workout Efficiency (Raw)'] = processed_df['Workout Efficiency (Raw)']
+            output_df['Workout Efficiency (Scaled)'] = processed_df['Workout Efficiency (Scaled)']
+            output_df['Predicted Efficiency Classification'] = prediction_labels
+            
+            # Display results
+            st.subheader("Hasil Prediksi (Batch)")
+            st.dataframe(output_df)
+            
+            # Visualization: Bar chart of prediction distribution
+            st.subheader("Distribusi Kelas Prediksi")
+            class_counts = prediction_labels.value_counts().reset_index()
+            class_counts.columns = ['Kelas', 'Jumlah']
+            fig = px.bar(class_counts, x='Kelas', y='Jumlah', 
+                         color='Kelas', text='Jumlah',
+                         color_discrete_map={
+                             'Low Efficiency': '#FF6347',
+                             'Moderate Efficiency': '#4682B4',
+                             'High Efficiency': '#32CD32'
+                         },
+                         title="Distribusi Kelas Prediksi")
+            fig.update_layout(xaxis_title="Kelas Prediksi", yaxis_title="Jumlah Data")
+            st.plotly_chart(fig, use_container_width=True)
+            
+            # Download button
+            csv = output_df.to_csv(index=False).encode('utf-8')
+            st.download_button(
+                label="Unduh Prediksi",
+                data=csv,
+                file_name=f"predictions_{selected_scenario}_{selected_algorithm}.csv",
+                mime="text/csv",
+                key=str(uuid.uuid4())
+            )
 
 # Footer
 st.markdown("---")
