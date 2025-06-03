@@ -6,13 +6,49 @@ import pickle
 import uuid
 import os
 import plotly.express as px
+import plotly.graph_objects as go
 
 # Set page configuration
 st.set_page_config(page_title="Workout Efficiency Classification Dashboard", layout="wide")
 
 # Define base directory
-BASE_DIR = "E:/Praktikum sem 6/DATA_MINING/workout" # Please ensure this path is correct for your system
+BASE_DIR = "E:/Praktikum sem 6/DATA_MINING/workout"
 MODELS_DIR = os.path.join(BASE_DIR, "models")
+
+# Custom CSS for styling
+st.markdown("""
+<style>
+    .card {
+        background-color: #f0f2f6;
+        border-radius: 10px;
+        padding: 20px;
+        margin: 10px 0;
+        box-shadow: 0 4px 8px rgba(0,0,0,0.1);
+        text-align: center;
+    }
+    .card-correct {
+        background-color: #d4edda;
+        border: 2px solid #28a745;
+    }
+    .card-incorrect {
+        background-color: #f8d7da;
+        border: 2px solid #dc3545;
+    }
+    .card-prediction {
+        background-color: #d1ecf1;
+        border: 2px solid #17a2b8;
+    }
+    .card-title {
+        font-size: 24px;
+        font-weight: bold;
+        margin-bottom: 10px;
+    }
+    .card-value {
+        font-size: 18px;
+        color: #333;
+    }
+</style>
+""", unsafe_allow_html=True)
 
 # Title and description
 st.title("Workout Efficiency Classification Dashboard")
@@ -20,7 +56,7 @@ st.markdown("""
 Select the feature selection scenario and algorithm to classify workout efficiency.
 Use the 'Manual Input' tab to enter data according to the selected features, or the 'Batch Input' tab to upload a CSV file.
 Results will be displayed in a table (including raw and scaled Workout Efficiency),
-with a prediction distribution visualization for batch input, and available for download.
+with a prediction distribution visualization and accuracy percentages for batch input, and available for download.
 """)
 
 # Define scenarios and their features
@@ -95,6 +131,25 @@ def calculate_workout_efficiency(row, norm_params):
         (age_modifier * 0.025) + (gender_modifier * 0.025)
     )
     return workout_efficiency
+
+# Calculate Efficiency Classification
+def calculate_efficiency_classification(df):
+    df = df.copy()
+    percentile_33 = df['Workout Efficiency (Raw)'].quantile(0.33)
+    percentile_66 = df['Workout Efficiency (Raw)'].quantile(0.66)
+
+    def classify_workout_efficiency(efficiency, low_threshold, high_threshold):
+        if efficiency < low_threshold:
+            return 'Low Efficiency'
+        elif low_threshold <= efficiency <= high_threshold:
+            return 'Moderate Efficiency'
+        else:
+            return 'High Efficiency'
+
+    df['Efficiency Classification'] = df['Workout Efficiency (Raw)'].apply(
+        lambda x: classify_workout_efficiency(x, percentile_33, percentile_66)
+    )
+    return df
 
 # Preprocess input data
 def preprocess_data(df, selected_features, scaler, norm_params):
@@ -215,11 +270,11 @@ with tab1:
                 2: 'High Efficiency'
             }).iloc[0]
             
-            # Define colors for efficiency levels (text color and background color)
+            # Define colors for efficiency levels
             style_map = {
-                'Low Efficiency': {'text_color': 'white', 'background_color': 'red'},
-                'Moderate Efficiency': {'text_color': 'white', 'background_color': 'orange'},
-                'High Efficiency': {'text_color': 'white', 'background_color': 'green'}
+                'Low Efficiency': {'text_color': 'white', 'background_color': '#FF6347'},
+                'Moderate Efficiency': {'text_color': 'white', 'background_color': '#4682B4'},
+                'High Efficiency': {'text_color': 'white', 'background_color': '#32CD32'}
             }
             
             # Get the style for the current prediction
@@ -227,21 +282,21 @@ with tab1:
             
             # Display results with colored prediction and background
             st.subheader("Prediction Results (Manual Input)")
-            st.write(f"**Workout Efficiency (Raw):** {processed_df['Workout Efficiency (Raw)'].iloc[0]:.2f}")
-            st.write(f"**Workout Efficiency (Scaled):** {processed_df['Workout Efficiency (Scaled)'].iloc[0]:.2f}")
+            st.markdown(f"""
+            <div class="card card-prediction">
+                <div class="card-title">Prediction Results</div>
+                <div class="card-value">Workout Efficiency (Raw): {processed_df['Workout Efficiency (Raw)'].iloc[0]:.2f}</div>
+                <div class="card-value">Workout Efficiency (Scaled): {processed_df['Workout Efficiency (Scaled)'].iloc[0]:.2f}</div>
+                <div class="card-value" style='background-color: {current_style['background_color']}; color: {current_style['text_color']}; padding: 5px; border-radius: 3px;'>
+                    Predicted Efficiency Classification: {prediction_label}
+                </div>
+            </div>
+            """, unsafe_allow_html=True)
             
-            # Display the prediction with bold text and colored background
-            st.markdown(
-                f"<div style='background-color: {current_style['background_color']}; color: {current_style['text_color']}; padding: 10px; border-radius: 5px; font-weight: bold;'>"
-                f"Predicted Efficiency Classification: {prediction_label}"
-                f"</div>", 
-                unsafe_allow_html=True
-            )
-            
-            # Optionally, display the input data in a dataframe above the styled prediction
+            # Display the input data
             st.subheader("Your Input Data")
-            st.dataframe(input_df) # Display the original input data
-            
+            st.dataframe(input_df)
+
 with tab2:
     st.subheader("Batch Input")
     uploaded_file = st.file_uploader("Upload CSV for prediction", type=["csv"])
@@ -250,7 +305,7 @@ with tab2:
         input_df = pd.read_csv(uploaded_file)
         input_df.columns = input_df.columns.str.strip()
 
-        # Load model, scaler, and normalization parameters
+        # Load model, scaler, and normalization parameters for selected algorithm
         try:
             model, scaler, norm_params = load_model_and_scaler(selected_scenario, selected_algorithm)
         except FileNotFoundError:
@@ -268,16 +323,63 @@ with tab2:
                 2: 'High Efficiency'
             })
             
+            # Calculate Efficiency Classification for ground truth
+            processed_df = calculate_efficiency_classification(processed_df)
+            
             # Add predictions and Workout Efficiency to output
             output_df = input_df.copy()
             output_df['Workout Efficiency (Raw)'] = processed_df['Workout Efficiency (Raw)']
             output_df['Workout Efficiency (Scaled)'] = processed_df['Workout Efficiency (Scaled)']
             output_df['Predicted Efficiency Classification'] = prediction_labels
+            output_df['Efficiency Classification'] = processed_df['Efficiency Classification']
             
+            # Calculate correct and incorrect predictions
+            correct = (output_df['Predicted Efficiency Classification'] == output_df['Efficiency Classification'])
+            correct_count = correct.sum()
+            incorrect_count = len(correct) - correct_count
+            correct_percent = (correct_count / len(correct)) * 100 if len(correct) > 0 else 0
+            incorrect_percent = (incorrect_count / len(correct)) * 100 if len(correct) > 0 else 0
+
             # Display results
             st.subheader("Prediction Results (Batch)")
             st.dataframe(output_df)
             
+            # Display accuracy
+            st.subheader("Classification Accuracy")
+            col1, col2 = st.columns(2)
+            with col1:
+                st.markdown(f"""
+                <div class="card card-correct">
+                    <div class="card-title">Correct Predictions</div>
+                    <div class="card-value">{correct_percent:.2f}% ({correct_count} samples)</div>
+                </div>
+                """, unsafe_allow_html=True)
+            with col2:
+                st.markdown(f"""
+                <div class="card card-incorrect">
+                    <div class="card-title">Incorrect Predictions</div>
+                    <div class="card-value">{incorrect_percent:.2f}% ({incorrect_count} samples)</div>
+                </div>
+                """, unsafe_allow_html=True)
+            
+            # Bar plot for correct vs incorrect
+            fig = go.Figure(data=[
+                go.Bar(
+                    x=['Correct', 'Incorrect'],
+                    y=[correct_count, incorrect_count],
+                    marker_color=['#32CD32', '#FF6347'],
+                    text=[correct_count, incorrect_count],
+                    textposition='auto'
+                )
+            ])
+            fig.update_layout(
+                title=f"{selected_algorithm}: Correct vs Incorrect Classifications (Scenario: {selected_scenario})",
+                xaxis_title="Classification",
+                yaxis_title="Count",
+                height=400
+            )
+            st.plotly_chart(fig, use_container_width=True)
+
             # Visualization: Bar chart of prediction distribution
             st.subheader("Prediction Class Distribution")
             class_counts = prediction_labels.value_counts().reset_index()
@@ -285,9 +387,9 @@ with tab2:
             fig = px.bar(class_counts, x='Class', y='Count', 
                          color='Class', text='Count',
                          color_discrete_map={
-                             'Low Efficiency': '#FF6347', # Tomato
-                             'Moderate Efficiency': '#4682B4', # SteelBlue
-                             'High Efficiency': '#32CD32' # LimeGreen
+                             'Low Efficiency': '#FF6347',
+                             'Moderate Efficiency': '#4682B4',
+                             'High Efficiency': '#32CD32'
                          },
                          title="Prediction Class Distribution")
             fig.update_layout(xaxis_title="Prediction Class", yaxis_title="Number of Data Points")
