@@ -50,8 +50,8 @@ st.markdown("""
 </style>
 """, unsafe_allow_html=True)
 
-# Title and description
-st.title("Workout Efficiency Classification Dashboard")
+# Title and description with emoji
+st.title("Workout Efficiency Classification Dashboard 💪")
 st.markdown("""
 Select the feature selection scenario and algorithm to classify workout efficiency.
 Use the 'Manual Input' tab to enter data according to the selected features, or the 'Batch Input' tab to upload a CSV file.
@@ -94,7 +94,7 @@ selected_scenario = st.sidebar.selectbox("Select Feature Selection Scenario", li
 selected_algorithm = st.sidebar.selectbox("Select Algorithm", algorithms)
 
 # Display selected features
-st.subheader("Selected Features for Prediction")
+st.subheader("Selected Features for Prediction 📋")
 st.write([f for f in scenarios[selected_scenario] if f != 'Workout Efficiency'])
 
 # Calculate Workout Efficiency
@@ -234,7 +234,7 @@ def load_model_and_scaler(scenario, algorithm):
 tab1, tab2 = st.tabs(["Manual Input", "Batch Input"])
 
 with tab1:
-    st.subheader("Manual Input")
+    st.subheader("Manual Input ✍️")
     with st.form(key='manual_input_form'):
         st.markdown("Enter data for the selected features:")
         
@@ -246,7 +246,7 @@ with tab1:
             else:
                 input_data[column] = st.number_input(f"{column}", min_value=0.0, step=0.1)
         
-        submit_button = st.form_submit_button(label='Predict')
+        submit_button = st.form_submit_button(label='Predict 🚀')
 
     if submit_button:
         # Convert manual input to DataFrame
@@ -270,35 +270,35 @@ with tab1:
                 2: 'High Efficiency'
             }).iloc[0]
             
-            # Define colors for efficiency levels
+            # Define colors and emojis for efficiency levels
             style_map = {
-                'Low Efficiency': {'text_color': 'white', 'background_color': '#FF6347'},
-                'Moderate Efficiency': {'text_color': 'white', 'background_color': '#4682B4'},
-                'High Efficiency': {'text_color': 'white', 'background_color': '#32CD32'}
+                'Low Efficiency': {'text_color': 'white', 'background_color': '#FF6347', 'emoji': '❌'},
+                'Moderate Efficiency': {'text_color': 'white', 'background_color': '#4682B4', 'emoji': '⚠️'},
+                'High Efficiency': {'text_color': 'white', 'background_color': '#32CD32', 'emoji': '✅'}
             }
             
             # Get the style for the current prediction
-            current_style = style_map.get(prediction_label, {'text_color': 'black', 'background_color': 'white'})
+            current_style = style_map.get(prediction_label, {'text_color': 'black', 'background_color': 'white', 'emoji': ''})
             
-            # Display results with colored prediction and background
-            st.subheader("Prediction Results (Manual Input)")
+            # Display results with colored prediction and emoji
+            st.subheader("Prediction Results 📊")
             st.markdown(f"""
             <div class="card card-prediction">
-                <div class="card-title">Prediction Results</div>
+                <div class="card-title">Prediction Results 🏆</div>
                 <div class="card-value">Workout Efficiency (Raw): {processed_df['Workout Efficiency (Raw)'].iloc[0]:.2f}</div>
                 <div class="card-value">Workout Efficiency (Scaled): {processed_df['Workout Efficiency (Scaled)'].iloc[0]:.2f}</div>
                 <div class="card-value" style='background-color: {current_style['background_color']}; color: {current_style['text_color']}; padding: 5px; border-radius: 3px;'>
-                    Predicted Efficiency Classification: {prediction_label}
+                    Predicted Efficiency Classification: {prediction_label} {current_style['emoji']}
                 </div>
             </div>
             """, unsafe_allow_html=True)
             
             # Display the input data
-            st.subheader("Your Input Data")
+            st.subheader("Your Input Data 📋")
             st.dataframe(input_df)
 
 with tab2:
-    st.subheader("Batch Input")
+    st.subheader("Batch Input 📂")
     uploaded_file = st.file_uploader("Upload CSV for prediction", type=["csv"])
 
     if uploaded_file:
@@ -341,23 +341,23 @@ with tab2:
             incorrect_percent = (incorrect_count / len(correct)) * 100 if len(correct) > 0 else 0
 
             # Display results
-            st.subheader("Prediction Results (Batch)")
+            st.subheader("Prediction Results 📊")
             st.dataframe(output_df)
             
             # Display accuracy
-            st.subheader("Classification Accuracy")
+            st.subheader("Classification Accuracy 📈")
             col1, col2 = st.columns(2)
             with col1:
                 st.markdown(f"""
                 <div class="card card-correct">
-                    <div class="card-title">Correct Predictions</div>
+                    <div class="card-title">Correct Predictions ✅</div>
                     <div class="card-value">{correct_percent:.2f}% ({correct_count} samples)</div>
                 </div>
                 """, unsafe_allow_html=True)
             with col2:
                 st.markdown(f"""
                 <div class="card card-incorrect">
-                    <div class="card-title">Incorrect Predictions</div>
+                    <div class="card-title">Incorrect Predictions ❌</div>
                     <div class="card-value">{incorrect_percent:.2f}% ({incorrect_count} samples)</div>
                 </div>
                 """, unsafe_allow_html=True)
@@ -373,7 +373,7 @@ with tab2:
                 )
             ])
             fig.update_layout(
-                title=f"{selected_algorithm}: Correct vs Incorrect Classifications (Scenario: {selected_scenario})",
+                title=f"{selected_algorithm}: Correct vs Incorrect Classifications (Scenario: {selected_scenario}) 📈",
                 xaxis_title="Classification",
                 yaxis_title="Count",
                 height=400
@@ -381,7 +381,7 @@ with tab2:
             st.plotly_chart(fig, use_container_width=True)
 
             # Visualization: Bar chart of prediction distribution
-            st.subheader("Prediction Class Distribution")
+            st.subheader("Prediction Class Distribution 📈")
             class_counts = prediction_labels.value_counts().reset_index()
             class_counts.columns = ['Class', 'Count']
             fig = px.bar(class_counts, x='Class', y='Count', 
@@ -391,14 +391,15 @@ with tab2:
                              'Moderate Efficiency': '#4682B4',
                              'High Efficiency': '#32CD32'
                          },
-                         title="Prediction Class Distribution")
+                         title="Prediction Class Distribution 📊")
             fig.update_layout(xaxis_title="Prediction Class", yaxis_title="Number of Data Points")
             st.plotly_chart(fig, use_container_width=True)
             
             # Download button
+            st.markdown("Download Predictions ⬇️")
             csv = output_df.to_csv(index=False).encode('utf-8')
             st.download_button(
-                label="Download Predictions",
+                label="Download CSV",
                 data=csv,
                 file_name=f"predictions_{selected_scenario}_{selected_algorithm}.csv",
                 mime="text/csv",
@@ -407,4 +408,4 @@ with tab2:
 
 # Footer
 st.markdown("---")
-st.markdown("Developed with Streamlit | Data: Workout Fitness Tracker")
+st.markdown("Developed with Streamlit | Data: Workout Fitness Tracker 🏋️")
