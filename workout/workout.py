@@ -95,7 +95,9 @@ selected_algorithm = st.sidebar.selectbox("Select Algorithm", algorithms)
 
 # Display selected features
 st.subheader("Selected Features for Prediction 📋")
-st.write([f for f in scenarios[selected_scenario] if f != 'Workout Efficiency'])
+features_to_display = [f for f in scenarios[selected_scenario] if f != 'Workout Efficiency']
+markdown_list = "\n".join([f"- {feature}" for feature in features_to_display])
+st.markdown(markdown_list)
 
 # Calculate Workout Efficiency
 def calculate_workout_efficiency(row, norm_params):
@@ -231,10 +233,10 @@ def load_model_and_scaler(scenario, algorithm):
     return model, scaler, norm_params
 
 # Create tabs for Manual Input and Batch Input
-tab1, tab2 = st.tabs(["Manual Input", "Batch Input"])
+tab1, tab2 = st.tabs(["Manual Test", "Batch Test"])
 
 with tab1:
-    st.subheader("Manual Input ✍️")
+    st.subheader("Manual Test ✍️")
     with st.form(key='manual_input_form'):
         st.markdown("Enter data for the selected features:")
         
@@ -298,7 +300,7 @@ with tab1:
             st.dataframe(input_df)
 
 with tab2:
-    st.subheader("Batch Input 📂")
+    st.subheader("Batch Test 📂")
     uploaded_file = st.file_uploader("Upload CSV for prediction", type=["csv"])
 
     if uploaded_file:
